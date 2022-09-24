@@ -1,7 +1,7 @@
-import logging
-import pytest 
+import pytest
 
 from src.bf import BFCommand, BFInitError, BFInterpreter, BFRuntimeError, ProgramState
+
 
 # Groups tests related to initialization of a BF Interpreter
 class TestBFInit:
@@ -39,12 +39,13 @@ class TestBFInit:
     def test_init_max_value_error(self):
 
         with pytest.raises(BFInitError):
-            BFInterpreter(1,0)
+            BFInterpreter(1, 0)
 
     def test_init_empty_tape_error(self):
 
         with pytest.raises(BFInitError):
             BFInterpreter(1).setTape("")
+
 
 # Groups tests related to execution of a BF Interpreter
 class TestBFRuntime:
@@ -70,7 +71,7 @@ class TestBFRuntime:
 
         assert interpreter.pc == 3
         assert interpreter.state == ProgramState.Halted
-        
+
     def test_pointer_commands(self):
         interpreter = BFInterpreter(2)
         interpreter.setTape("><")
@@ -124,7 +125,7 @@ class TestBFRuntime:
 
         interpreter.step()
         assert interpreter.pc == 2
-        
+
         interpreter.step()
         assert interpreter.pc == 3
 
@@ -191,7 +192,7 @@ class TestBFRuntime:
         # Initial Error
         with pytest.raises(BFRuntimeError):
             interpreter.step()
-        
+
         # Error caused by trying to step again
         with pytest.raises(BFRuntimeError):
             interpreter.step()
