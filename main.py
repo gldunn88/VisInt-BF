@@ -5,7 +5,7 @@ import os
 import sys
 import logging
 import time
-from src.bf import BFInterpreter, ProgramState
+from src.bf import BFInterpreter, BFRuntimeError
 
 # see if we can load more than standard BMP
 if not pg.image.get_extended():
@@ -26,9 +26,19 @@ CELL_UNIT_HEIGHT = 25
 ## Pointer Rendering
 PTRRECT = pg.Rect(0, CELL_INITIAL_Y+10, CELL_WIDTH, CELL_WIDTH)
 
+## Some handy color references
+CLR_WHITE = (255,255,255)
+CLR_RED = (255,0,0)
+CLR_GREEN = (0,255,0)
+CLR_BLUE = (0,0,255)
+CLR_BLACK = (0,0,0)
+
 ## Execution Control
 STEP_HERTZ = 1
 STEP_MAX_HERTZ = 32
+
+## UI Control Values
+UI_INIT_TOPLEFT = (20,20)
 
 main_dir = os.path.split(os.path.abspath(__file__))[0]
 
@@ -73,7 +83,7 @@ def initWindow(width = 800, height = 600) -> pg.Surface:
     return pg.display.set_mode(SCREENRECT.size, winstyle, bestdepth)
 
 def initLogging():
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
 
 def setStepHz(step_hz: int, loop_on_overflow: bool = False):
     global STEP_HERTZ, STEP_MAX_HERTZ
@@ -113,18 +123,6 @@ def main(winstyle=0):
 
     clock = pg.time.Clock()
 
-    # Load Images
-
-    ## Load PTR
-    ptr_img = load_image("ptr.png")
-    ptr_img = pg.transform.scale(ptr_img, (PTRRECT.width, PTRRECT.height))
-    Pointer.images = [ptr_img, pg.transform.flip(ptr_img, 1, 0)]
-
-    all = pg.sprite.Group()
-    Pointer.containers = all
-
-    ptr = Pointer()
-    
     # Set up auto-execute values
     ## We always start with 1 op per second
     setStepHz(1)
@@ -133,6 +131,23 @@ def main(winstyle=0):
     step_delay = 1.0/STEP_HERTZ
     step_next_time = time.time() + step_delay
     step_run = False
+
+    # Set up state tracking
+    last_state = bf_interpreter.state
+    last_step_hz = STEP_HERTZ
+    last_step_count = 0
+    
+    # Init the UI elements
+    ui_font = pg.font.Font('freesansbold.ttf', 32)
+    
+    ui_hertz_text = ui_font.render(f"CPU: {STEP_HERTZ}Hz", True, CLR_WHITE, CLR_BLACK)
+    ui_hertz_rect = ui_hertz_text.get_rect()
+    
+    ui_state_text = ui_font.render(f"State: {bf_interpreter.state._name_}", True, CLR_WHITE, CLR_BLACK)
+    ui_state_rect = ui_state_text.get_rect()
+
+    ui_step_count_text = ui_font.render(f"Step Count: {bf_interpreter.step_count}", True, CLR_WHITE, CLR_BLACK)
+    ui_step_count_rect =  ui_step_count_text.get_rect()
 
     while True:
         # Hold Framerate to 30 fps
@@ -149,6 +164,11 @@ def main(winstyle=0):
             if event.type == pg.KEYUP and event.key == pg.K_SPACE:
                 step_run = not step_run
                 step_next_time = time.time() + step_delay
+
+                if bf_interpreter.halted():
+                    logging.debug("Disabling auto-run on halted program")
+                    step_run = False
+
                 logging.debug(f"Setting program auto exec to {step_run}")
             
             # Pressing TAB will increase the execution rate by powers of 2
@@ -157,36 +177,72 @@ def main(winstyle=0):
                 incrementStepHz()
 
                 step_delay = 1.0/STEP_HERTZ
-                step_next_time = time.time() + step_delay
+                step_next_time = time.time() + step_delay                
 
         
         keystate = pg.key.get_pressed()
 
         # Execute Instructions
         if step_run and not bf_interpreter.halted() and time.time() >= step_next_time:
-            bf_interpreter.step()
-            step_next_time = step_next_time + step_delay
+            try:
+                bf_interpreter.step()
+                step_next_time = step_next_time + step_delay
+
+            except BFRuntimeError as runtime_error:
+                logging.warning(f"Program execution failed due to runtime error:\r\n\t{runtime_error}")
 
         # Update Screen Elements
+        ## Memory Pointer
         PTRRECT.left = CELL_INITIAL_X + bf_interpreter.ptr*(CELL_OFFSET + CELL_WIDTH)
+        
+        ## UI Elements
+        
+        ### Regenerate the UI Hertz display if it has changed
+        if last_step_hz != STEP_HERTZ:
+            ui_hertz_text = ui_font.render(f"CPU: {STEP_HERTZ}Hz", True, CLR_WHITE, CLR_BLACK)
+            ui_hertz_rect = ui_hertz_text.get_rect()
+            last_step_hz = STEP_HERTZ
+
+        ui_hertz_rect.topleft = UI_INIT_TOPLEFT
+        
+        ### Regenerate the state if it has changed
+        if bf_interpreter.state != last_state:
+            ui_state_text = ui_font.render(f"{bf_interpreter.state._name_}", True, CLR_WHITE, CLR_BLACK)
+            ui_state_rect = ui_state_text.get_rect()
+            last_state = bf_interpreter.state
+
+        ui_state_rect.topleft = (ui_hertz_rect.left,ui_hertz_rect.bottom)
+        
+        ### Regenerate the step count if it has changed
+        if bf_interpreter.step_count != last_step_count:
+            ui_step_count_text = ui_font.render(f"Step Count: {bf_interpreter.step_count}", True, CLR_WHITE, CLR_BLACK)
+            ui_step_count_rect =  ui_step_count_text.get_rect()
+            last_step_count = bf_interpreter.step_count
+
+        ui_step_count_rect.topleft = (ui_hertz_rect.left,ui_state_rect.bottom)
 
         # Render Screen
-        screen.fill((0,0,0))
+        screen.fill(CLR_BLACK)
         
+        # Render UI Elements
+        screen.blit(ui_hertz_text, ui_hertz_rect)
+        screen.blit(ui_state_text, ui_state_rect)
+        screen.blit(ui_step_count_text, ui_step_count_rect)
+
         # Render PC
-        ptr_color = (255,255,255)
+        ptr_color = CLR_WHITE
 
         ## The program execution has completed
         if bf_interpreter.halted():
-            ptr_color = (255,0,0)
+            ptr_color = CLR_RED
         
         ## The program is auto executing
         elif step_run:
-            ptr_color = (0,255,0)
+            ptr_color = CLR_GREEN
 
         ## The program is paused
         else:
-            ptr_color = (0,0,255)
+            ptr_color = CLR_BLUE
 
         pg.draw.polygon(
             surface=screen, 

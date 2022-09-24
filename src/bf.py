@@ -82,6 +82,8 @@ class BFInterpreter():
         self.max_value: int = max_value
         self.memory: list = [0] * memory_size
 
+        self.step_count: int = 0
+
     def setTape(self, program: str):
         if len(program) == 0:
             self.raiseInitError("Tape must contain at least one symbol")
@@ -172,12 +174,13 @@ class BFInterpreter():
                 else:
                     # Return to the start of the loop to reassess
                     self.pc = self.whileStack.pop()
-
+        
         # Detect end of program
         if self.pc >= len(self.tape):
             self.state = ProgramState.Halted
             self.stateDetail = "End of Tape"
-            return
+            
+        self.step_count += 1
 
     def findLoopEnd(self) -> int:
 
