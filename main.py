@@ -117,8 +117,9 @@ def main(winstyle=0):
     logging.debug(cmd_args)
 
     # Init a BF program
-    bf_interpreter = BFInterpreter(5, 16)
-    bf_interpreter.setTape("+++++[->+++<]")
+    bf_interpreter = BFInterpreter(12, 16)
+#    bf_interpreter.setTape("+++++[->+++<]")
+    bf_interpreter.setTape(">>>>>>>>>>>")
 
     # Init the engine and display window
     initPyGame()
@@ -152,9 +153,15 @@ def main(winstyle=0):
     ui_step_count_text = ui_font.render(f"Step Count: {bf_interpreter.step_count}", True, CLR_WHITE, CLR_BLACK)
     ui_step_count_rect = ui_step_count_text.get_rect()
 
+    # Set up Cursor Tracking
+    render_offset = 0 - SCREENRECT.width/2
+    render_offset_target = render_offset
+    render_offset_speed_per_second = 100  # pixels per second
+    render_offset_speed_per_tick = render_offset_speed_per_second*(60/1000)  # pixels per frame
+
     while True:
-        # Hold Framerate to 30 fps
-        clock.tick(40)
+        # Hold Framerate to 60 fps
+        clock.tick(60)
 
         # Handle Input
         for event in pg.event.get():
@@ -194,6 +201,18 @@ def main(winstyle=0):
         # Update Screen Elements
         # Memory Pointer
         PTRRECT.left = CELL_INITIAL_X + bf_interpreter.ptr*(CELL_OFFSET + CELL_WIDTH)
+
+        # Updating rendering offset
+        render_offset_target = PTRRECT.left - SCREENRECT.width/2
+        if render_offset_target < render_offset:
+            render_offset -= render_offset_speed_per_tick
+            if render_offset_target > render_offset:
+                render_offset = render_offset_target
+
+        elif render_offset_target > render_offset:
+            render_offset += render_offset_speed_per_tick
+            if render_offset_target < render_offset:
+                render_offset = render_offset_target
 
         # UI Elements
 
@@ -244,6 +263,8 @@ def main(winstyle=0):
         else:
             ptr_color = CLR_BLUE
 
+        PTRRECT.left -= render_offset
+
         pg.draw.polygon(
             surface=screen,
             color=ptr_color,
@@ -257,18 +278,18 @@ def main(winstyle=0):
             height = bf_interpreter.memory[i] * CELL_UNIT_HEIGHT
 
             # Draw cell reference base
-            cell_base_rect = pg.Rect(x=CELL_INITIAL_X + i*(CELL_OFFSET + CELL_WIDTH),
-                                     y=CELL_INITIAL_Y,
-                                     width=CELL_WIDTH,
-                                     height=10)
+            cell_base_rect = pg.Rect(CELL_INITIAL_X + i*(CELL_OFFSET + CELL_WIDTH) - render_offset,
+                                     CELL_INITIAL_Y,
+                                     CELL_WIDTH,
+                                     10)
 
             pg.draw.rect(screen, rect=cell_base_rect, color=(255, 0, 0))
 
             # Draw memory
-            cell_rect = pg.Rect(x=CELL_INITIAL_X + i*(CELL_OFFSET + CELL_WIDTH),
-                                y=CELL_INITIAL_Y - height,
-                                width=CELL_WIDTH,
-                                height=height)
+            cell_rect = pg.Rect(CELL_INITIAL_X + i*(CELL_OFFSET + CELL_WIDTH) - render_offset,
+                                CELL_INITIAL_Y - height,
+                                CELL_WIDTH,
+                                height)
 
             pg.draw.rect(screen, rect=cell_rect, color=(255, 255, 255))
 
