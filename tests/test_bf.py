@@ -196,3 +196,69 @@ class TestBFRuntime:
         # Error caused by trying to step again
         with pytest.raises(BFRuntimeError):
             interpreter.step()
+
+    def test_setMemory_defaults_only(self):
+        interpreter = BFInterpreter(8, 16)
+        interpreter.setMemory(values=[],default=0)
+        
+        assert len(interpreter.memory) == 8
+        for cell in interpreter.memory:
+            assert cell == 0
+
+
+    def test_setMemory_initialized_and_default(self):
+        interpreter = BFInterpreter(8, 16)
+        interpreter.setMemory(values=[1,2,3,4],default=8)
+        
+        assert len(interpreter.memory) == 8
+        assert interpreter.memory[0] == 1
+        assert interpreter.memory[1] == 2
+        assert interpreter.memory[2] == 3
+        assert interpreter.memory[3] == 4
+        
+        for i in range(4, len(interpreter.memory)):
+            assert interpreter.memory[i] == 8
+
+
+    def test_setMemory_fully_initialized(self):
+        interpreter = BFInterpreter(8, 16)
+        interpreter.setMemory(values=[1,2,3,4,5,6,7,8],default=0)
+        
+        assert len(interpreter.memory) == 8
+        assert interpreter.memory[0] == 1
+        assert interpreter.memory[1] == 2
+        assert interpreter.memory[2] == 3
+        assert interpreter.memory[3] == 4
+        assert interpreter.memory[4] == 5
+        assert interpreter.memory[5] == 6
+        assert interpreter.memory[6] == 7
+        assert interpreter.memory[7] == 8
+
+
+    def test_setMemory_negative_default_error(self):
+        interpreter = BFInterpreter(8, 16)
+        with pytest.raises(BFInitError):
+            interpreter.setMemory(values=[],default=-1)
+
+    def test_setMemory_large_default_error(self):
+        interpreter = BFInterpreter(8, 16)
+        with pytest.raises(BFInitError):
+            interpreter.setMemory(values=[],default=17)
+
+
+    def test_setMemory_long_values_error(self):
+        interpreter = BFInterpreter(8, 16)
+        with pytest.raises(BFInitError):
+            interpreter.setMemory(values=[1,2,3,4,5,6,7,8,9],default=0)
+
+
+    def test_setMemory_negative_values_error(self):
+        interpreter = BFInterpreter(8, 16)
+        with pytest.raises(BFInitError):
+            interpreter.setMemory(values=[1,-1],default=0)
+
+    def test_setMemory_large_values_error(self):
+        interpreter = BFInterpreter(8, 16)
+        with pytest.raises(BFInitError):
+            interpreter.setMemory(values=[1,17],default=0)
+        
