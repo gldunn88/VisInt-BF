@@ -91,6 +91,30 @@ class BFInterpreter():
 
         self.step_count: int = 0
 
+    def setMemory(self, values: list = [], default: int = 0):
+
+        # Validate that the provided values are legal
+        if len(values) > len(self.memory):
+            self.raiseInitError(f"Attempting to initialize {len(values)} in memory size {len(self.memory)}")
+
+        for i in range(0,len(values)):
+            if type(values[i]) is not int or values[i] < 0 or values[i] > self.max_value:
+                self.raiseInitError(f"Attempting to initialize memory to illegal inital value: {values[i]}. Must be integer in range 0-> {self.max_value}")
+
+        if default < 0 or default > self.max_value:
+            self.raiseInitError(f"Attempting to initialize memory to illegal default value: {default}. Must be integer in range 0-> {self.max_value}")
+
+        logging.debug(f"Setting memory to initial values: \r\n\t{values}\r\nDefault Value for Remaining Values: {default}")
+
+        # Assign memory, setting default after initial values are exhausted
+        for i in range(0,len(self.memory)):
+            if i < len(values):
+                self.memory[i] = values[i]
+            else:
+                self.memory[i] = default
+
+        logging.debug(f"Memory after initialization:\r\n\t{self.memory}")
+
     def setTape(self, program: str):
         if len(program) == 0:
             self.raiseInitError("Tape must contain at least one symbol")

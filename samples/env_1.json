@@ -1,0 +1,9 @@
+{
+    "version": "1",
+    "memory": {
+        "cell_count": 8,
+        "cell_max_value": 16,
+        "cell_default_value": 1,
+        "cell_initial_values": [1,2,3,4,5,6]
+    }
+}

@@ -1,9 +1,19 @@
+from email import message
+from pickle import INT
+from tabnanny import verbose
 import pygame as pg
 import os
 import sys
 import logging
 import time
+import json
 from src.bf import BFInterpreter, BFRuntimeError
+
+class CliInitError(Exception):
+    pass
+
+class EnvironmentInitError(Exception):
+    pass
 
 # see if we can load more than standard BMP
 if not pg.image.get_extended():
@@ -38,6 +48,13 @@ STEP_MAX_HERTZ = 32
 # UI Control Values
 UI_INIT_TOPLEFT = (20, 20)
 
+# Interpreter Control Values
+INT_SRC = ""
+INT_CELL_COUNT = 8
+INT_CELL_MAX_VALUE = 16
+INT_CELL_DEFAULT_VALUE = 0
+INT_INITIAL_VALUES = []
+
 main_dir = os.path.split(os.path.abspath(__file__))[0]
 
 
@@ -49,19 +66,6 @@ def load_image(file):
     except pg.error:
         raise SystemExit(f'Could not load image "{file}" {pg.get_error()}')
     return surface.convert()
-
-
-class Pointer(pg.sprite.Sprite):
-
-    images = []
-
-    def __init__(self):
-        pg.sprite.Sprite.__init__(self, self.containers)
-        self.image = self.images[0]
-        self.rect = self.image.get_rect(midbottom=SCREENRECT.midbottom)
-        self.reloading = 0
-        self.origtop = self.rect.top
-        self.facing = -1
 
 
 def initPyGame():
@@ -84,8 +88,11 @@ def initWindow(width=800, height=600) -> pg.Surface:
     return pg.display.set_mode(SCREENRECT.size, winstyle, bestdepth)
 
 
-def initLogging():
-    logging.basicConfig(level=logging.INFO)
+def initLogging(verbose: bool):
+    if(verbose):
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
 
 
 def setStepHz(step_hz: int, loop_on_overflow: bool = False):
@@ -107,19 +114,111 @@ def incrementStepHz():
     setStepHz(step_hz=STEP_HERTZ * 2, loop_on_overflow=True)
 
 
-def main(winstyle=0):
-    # Load Command Line Arguments
-    cmd_args = ""
-    for arg in sys.argv:
-        cmd_args = f"{cmd_args} {arg}"
+def openSrcFile(path: str):
+    global INT_SRC
+    logging.info(f"Loading source file from: {path}")
 
-    initLogging()
-    logging.debug(cmd_args)
+    with open(path, 'r') as f:
+        INT_SRC = f.read()
+
+
+def raiseEnvFileException(message: str):
+    logging.error(message)
+    raise EnvironmentInitError(message)
+
+
+def openEnvFile(path: str):
+    global INT_CELL_COUNT, INT_CELL_MAX_VALUE, INT_CELL_DEFAULT_VALUE, INT_INITIAL_VALUES
+
+    logging.info(f"Loading environment file from: {path}")
+
+    with open(path, 'r') as f:
+        content_json = json.loads(f.read())
+
+        # Setting cell maximum allowed value
+        cell_max = content_json["memory"]["cell_max_value"]
+        if type(cell_max) is not int or cell_max < 1:
+            raiseEnvFileException(f"Value 'cell_max_value' must be an integer greater than 0")
+        INT_CELL_MAX_VALUE = cell_max
+
+        # Setting cell count
+        cell_count = content_json["memory"]["cell_count"]
+        if type(cell_count) is not int or cell_count < 1:
+            raiseEnvFileException(f"Value 'cell_count' must be an integer greater than 0")
+        INT_CELL_COUNT = cell_count
+
+        # Setting cell default values
+        cell_default = content_json["memory"]["cell_default_value"]
+        if type(cell_default) is not int or cell_default < 0 or cell_default > INT_CELL_MAX_VALUE:
+            raiseEnvFileException(f"Value 'cell_default_value' must be an integer in the range -> {INT_CELL_MAX_VALUE}")
+        INT_CELL_DEFAULT_VALUE = cell_default
+
+        # Setting cell initial values
+        initial_values = content_json["memory"]["cell_initial_values"]
+        
+        # Do basic type and length validation with the settings already loaded
+        if type(initial_values) is not list:
+            raiseEnvFileException(f"List 'cell_initial_values' must be a list of integers in the range 0 -> {INT_CELL_MAX_VALUE}")
+        
+        if len(initial_values) > INT_CELL_COUNT:
+            raiseEnvFileException("List 'cell_initial_values' cannot have more entries that the number of cells")
+        
+        for v in initial_values:
+            if type(v) is not int or v < 0 or v > INT_CELL_MAX_VALUE:
+                raiseEnvFileException("Values in list 'cell_initial_values' must be integers in the range 0 -> {INT_CELL_MAX_VALUE}")
+        INT_INITIAL_VALUES = initial_values
+
+
+def processCLI():
+
+    verbose = False
+
+    for i in range(1, len(sys.argv)):
+        if sys.argv[i] in ["-v", "--verbose"]:
+            verbose = True
+
+    initLogging(verbose)
+
+    # Load Command Line Arguments
+    last_cmd = ""
+    for i in range(1, len(sys.argv)):
+        # Prepare to process next parameter set. May be one or two tokens
+        if last_cmd == "":
+            # Ignore verbose commands
+            if sys.argv[i] in ["-v", "--verbose"]:
+                continue
+
+            # Explicitely allow only - parameters that are supported
+            elif sys.argv[i] in ["-s", "--src-file", "-e", "--env-file"]:
+                last_cmd = sys.argv[i]
+
+            else:
+                message = f"Unexpected cli parameter '{sys.argv[i]}' found"
+                logging.error(message)
+                raise CliInitError(message)
+
+        # Process the second token in a two token parameter set.
+        elif last_cmd in ["-s", "--src-file"]:
+            openSrcFile(sys.argv[i])
+            last_cmd = ""
+
+        elif last_cmd in ["-e", "--env-file"]:
+            openEnvFile(sys.argv[i])
+            last_cmd = ""
+        else:
+            message = f"Unexpected cli parameter '{last_cmd}' found"
+            logging.error(message)
+            raise CliInitError(message)
+
+
+def main(winstyle=0):
+
+    processCLI()
 
     # Init a BF program
-    bf_interpreter = BFInterpreter(12, 16)
-#    bf_interpreter.setTape("+++++[->+++<]")
-    bf_interpreter.setTape(">>>>>>>>>>>")
+    bf_interpreter = BFInterpreter(INT_CELL_COUNT, INT_CELL_MAX_VALUE)
+    bf_interpreter.setMemory(INT_INITIAL_VALUES, INT_CELL_DEFAULT_VALUE)
+    bf_interpreter.setTape(INT_SRC)
 
     # Init the engine and display window
     initPyGame()
