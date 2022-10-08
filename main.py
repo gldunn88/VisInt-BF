@@ -1,6 +1,3 @@
-from email import message
-from pickle import INT
-from tabnanny import verbose
 import pygame as pg
 import os
 import sys
@@ -9,11 +6,14 @@ import time
 import json
 from src.bf import BFInterpreter, BFRuntimeError
 
+
 class CliInitError(Exception):
     pass
 
+
 class EnvironmentInitError(Exception):
     pass
+
 
 # see if we can load more than standard BMP
 if not pg.image.get_extended():
@@ -89,7 +89,7 @@ def initWindow(width=800, height=600) -> pg.Surface:
 
 
 def initLogging(verbose: bool):
-    if(verbose):
+    if verbose:
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.INFO)
@@ -138,13 +138,13 @@ def openEnvFile(path: str):
         # Setting cell maximum allowed value
         cell_max = content_json["memory"]["cell_max_value"]
         if type(cell_max) is not int or cell_max < 1:
-            raiseEnvFileException(f"Value 'cell_max_value' must be an integer greater than 0")
+            raiseEnvFileException("Value 'cell_max_value' must be an integer greater than 0")
         INT_CELL_MAX_VALUE = cell_max
 
         # Setting cell count
         cell_count = content_json["memory"]["cell_count"]
         if type(cell_count) is not int or cell_count < 1:
-            raiseEnvFileException(f"Value 'cell_count' must be an integer greater than 0")
+            raiseEnvFileException("Value 'cell_count' must be an integer greater than 0")
         INT_CELL_COUNT = cell_count
 
         # Setting cell default values
@@ -155,17 +155,17 @@ def openEnvFile(path: str):
 
         # Setting cell initial values
         initial_values = content_json["memory"]["cell_initial_values"]
-        
+
         # Do basic type and length validation with the settings already loaded
         if type(initial_values) is not list:
-            raiseEnvFileException(f"List 'cell_initial_values' must be a list of integers in the range 0 -> {INT_CELL_MAX_VALUE}")
-        
+            raiseEnvFileException(f"List 'cell_initial_values' must be a list of integers in the range 0 -> {INT_CELL_MAX_VALUE}") # noqa
+
         if len(initial_values) > INT_CELL_COUNT:
             raiseEnvFileException("List 'cell_initial_values' cannot have more entries that the number of cells")
-        
+
         for v in initial_values:
             if type(v) is not int or v < 0 or v > INT_CELL_MAX_VALUE:
-                raiseEnvFileException("Values in list 'cell_initial_values' must be integers in the range 0 -> {INT_CELL_MAX_VALUE}")
+                raiseEnvFileException("Values in list 'cell_initial_values' must be integers in the range 0 -> {INT_CELL_MAX_VALUE}") # noqa
         INT_INITIAL_VALUES = initial_values
 
 
