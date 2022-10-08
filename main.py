@@ -289,13 +289,19 @@ def main(winstyle=0):
                 step_next_time = time.time() + step_delay
 
         # Execute Instructions
-        if step_run and not bf_interpreter.halted() and time.time() >= step_next_time:
+        if step_run and bf_interpreter.canStep() and time.time() >= step_next_time:
             try:
                 bf_interpreter.step()
                 step_next_time = step_next_time + step_delay
 
             except BFRuntimeError as runtime_error:
                 logging.warning(f"Program execution failed due to runtime error:\r\n\t{runtime_error}")
+
+        # Pause execution until a byte is read
+        if bf_interpreter.waitingForInput():
+            bf_interpreter.readByte(int(input("Byte Read: ")))
+
+            step_next_time = time.time() + step_delay
 
         # Update Screen Elements
         # Memory Pointer
