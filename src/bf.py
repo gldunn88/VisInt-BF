@@ -62,14 +62,15 @@ def BFCommandToString(cmd):
 
 class ProgramState(Enum):
     Ready = 0,
-    Running = 1,
-    Halted = 2,
-    Error = 3
+    Running = 1
+    WaitingForInput = 2
+    Halted = 3
+    Error = 4
 
 
 class BFInterpreter():
 
-    def __init__(self, memory_size: int, max_value: int = 2147483647):
+    def __init__(self, memory_size: int, max_value: int = 256):
 
         if memory_size < 1:
             self.raiseInitError("Memory must be at least 1 cell")
@@ -97,17 +98,17 @@ class BFInterpreter():
         if len(values) > len(self.memory):
             self.raiseInitError(f"Attempting to initialize {len(values)} in memory size {len(self.memory)}")
 
-        for i in range(0,len(values)):
+        for i in range(0, len(values)):
             if type(values[i]) is not int or values[i] < 0 or values[i] > self.max_value:
-                self.raiseInitError(f"Attempting to initialize memory to illegal inital value: {values[i]}. Must be integer in range 0-> {self.max_value}")
+                self.raiseInitError(f"Attempting to initialize memory to illegal inital value: {values[i]}. Must be integer in range 0-> {self.max_value}") # noqa
 
         if default < 0 or default > self.max_value:
-            self.raiseInitError(f"Attempting to initialize memory to illegal default value: {default}. Must be integer in range 0-> {self.max_value}")
+            self.raiseInitError(f"Attempting to initialize memory to illegal default value: {default}. Must be integer in range 0-> {self.max_value}") # noqa
 
-        logging.debug(f"Setting memory to initial values: \r\n\t{values}\r\nDefault Value for Remaining Values: {default}")
+        logging.debug(f"Setting memory to initial values: \r\n\t{values}\r\nDefault Value for Remaining Values: {default}") # noqa
 
         # Assign memory, setting default after initial values are exhausted
-        for i in range(0,len(self.memory)):
+        for i in range(0, len(self.memory)):
             if i < len(values):
                 self.memory[i] = values[i]
             else:
@@ -127,6 +128,12 @@ class BFInterpreter():
 
     def halted(self) -> bool:
         return self.state in [ProgramState.Error, ProgramState.Halted]
+
+    def waitingForInput(self) -> bool:
+        return self.state in [ProgramState.WaitingForInput]
+
+    def canStep(self) -> bool:
+        return not (self.halted() or self.waitingForInput())
 
     def raiseRuntimeError(self, message):
         self.state = ProgramState.Error
@@ -150,8 +157,8 @@ class BFInterpreter():
         logging.debug(self.tapeString())
         logging.debug(self.memoryString())
 
-        if self.state in [ProgramState.Error, ProgramState.Halted]:
-            self.raiseRuntimeError(f"Attempting to step program in state {self.state}")
+        if self.state in [ProgramState.Error, ProgramState.Halted, ProgramState.WaitingForInput]:
+            self.raiseRuntimeError(f"Attempting to step program in state {self.state._name_}")
 
         cmd = self.tape[self.pc]
 
@@ -211,12 +218,34 @@ class BFInterpreter():
                     # Return to the start of the loop to reassess
                     self.pc = self.whileStack.pop()
 
+        elif cmd in [BFCommand.ReadByte]:
+            self.state = ProgramState.WaitingForInput
+            logging.info("Waiting for User Input")
+
         # Detect end of program
         if self.pc >= len(self.tape):
             self.state = ProgramState.Halted
             self.stateDetail = "End of Tape"
 
         self.step_count += 1
+
+    def readByte(self, value: int):
+        if self.state != ProgramState.WaitingForInput:
+            raise self.raiseRuntimeError(f"Attempting to accept user input in state {self.state._name_}")
+
+        if value < 0 or value > self.max_value:
+            raise self.raiseRuntimeError(f"Provided byte input ({value}) must be in the range 0 -> {self.max_value}")
+
+        self.memory[self.ptr] = value
+
+        # Increment the program counter and reset to steppable state
+        self.state = ProgramState.Running
+        self.pc += 1
+
+        # Detect end of program
+        if self.pc >= len(self.tape):
+            self.state = ProgramState.Halted
+            self.stateDetail = "End of Tape"
 
     def findLoopEnd(self) -> int:
 

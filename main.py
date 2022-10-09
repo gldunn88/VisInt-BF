@@ -1,19 +1,19 @@
-from email import message
-from pickle import INT
-from tabnanny import verbose
 import pygame as pg
 import os
 import sys
 import logging
 import time
 import json
-from src.bf import BFInterpreter, BFRuntimeError
+from src.bf import BFInterpreter, BFRuntimeError, ProgramState
+
 
 class CliInitError(Exception):
     pass
 
+
 class EnvironmentInitError(Exception):
     pass
+
 
 # see if we can load more than standard BMP
 if not pg.image.get_extended():
@@ -89,7 +89,7 @@ def initWindow(width=800, height=600) -> pg.Surface:
 
 
 def initLogging(verbose: bool):
-    if(verbose):
+    if verbose:
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.INFO)
@@ -138,13 +138,13 @@ def openEnvFile(path: str):
         # Setting cell maximum allowed value
         cell_max = content_json["memory"]["cell_max_value"]
         if type(cell_max) is not int or cell_max < 1:
-            raiseEnvFileException(f"Value 'cell_max_value' must be an integer greater than 0")
+            raiseEnvFileException("Value 'cell_max_value' must be an integer greater than 0")
         INT_CELL_MAX_VALUE = cell_max
 
         # Setting cell count
         cell_count = content_json["memory"]["cell_count"]
         if type(cell_count) is not int or cell_count < 1:
-            raiseEnvFileException(f"Value 'cell_count' must be an integer greater than 0")
+            raiseEnvFileException("Value 'cell_count' must be an integer greater than 0")
         INT_CELL_COUNT = cell_count
 
         # Setting cell default values
@@ -155,17 +155,17 @@ def openEnvFile(path: str):
 
         # Setting cell initial values
         initial_values = content_json["memory"]["cell_initial_values"]
-        
+
         # Do basic type and length validation with the settings already loaded
         if type(initial_values) is not list:
-            raiseEnvFileException(f"List 'cell_initial_values' must be a list of integers in the range 0 -> {INT_CELL_MAX_VALUE}")
-        
+            raiseEnvFileException(f"List 'cell_initial_values' must be a list of integers in the range 0 -> {INT_CELL_MAX_VALUE}") # noqa
+
         if len(initial_values) > INT_CELL_COUNT:
             raiseEnvFileException("List 'cell_initial_values' cannot have more entries that the number of cells")
-        
+
         for v in initial_values:
             if type(v) is not int or v < 0 or v > INT_CELL_MAX_VALUE:
-                raiseEnvFileException("Values in list 'cell_initial_values' must be integers in the range 0 -> {INT_CELL_MAX_VALUE}")
+                raiseEnvFileException("Values in list 'cell_initial_values' must be integers in the range 0 -> {INT_CELL_MAX_VALUE}") # noqa
         INT_INITIAL_VALUES = initial_values
 
 
@@ -240,6 +240,10 @@ def main(winstyle=0):
     last_step_hz = STEP_HERTZ
     last_step_count = 0
 
+    # Set up input handling
+    ui_prompt_running = False
+    ui_prompt_value = ""
+
     # Init the UI elements
     ui_font = pg.font.Font('freesansbold.ttf', 32)
 
@@ -269,33 +273,71 @@ def main(winstyle=0):
             if event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE:
                 return
 
-            # Pressing SPACE will toggle the program run mode
-            if event.type == pg.KEYUP and event.key == pg.K_SPACE:
-                step_run = not step_run
-                step_next_time = time.time() + step_delay
+            if ui_prompt_running:
+                if event.type == pg.KEYUP:
+                    if event.key == pg.K_0:
+                        ui_prompt_value = f"{ui_prompt_value}0"
+                    elif event.key == pg.K_1:
+                        ui_prompt_value = f"{ui_prompt_value}1"
+                    elif event.key == pg.K_2:
+                        ui_prompt_value = f"{ui_prompt_value}2"
+                    elif event.key == pg.K_3:
+                        ui_prompt_value = f"{ui_prompt_value}3"
+                    elif event.key == pg.K_4:
+                        ui_prompt_value = f"{ui_prompt_value}4"
+                    elif event.key == pg.K_5:
+                        ui_prompt_value = f"{ui_prompt_value}5"
+                    elif event.key == pg.K_6:
+                        ui_prompt_value = f"{ui_prompt_value}6"
+                    elif event.key == pg.K_7:
+                        ui_prompt_value = f"{ui_prompt_value}7"
+                    elif event.key == pg.K_8:
+                        ui_prompt_value = f"{ui_prompt_value}8"
+                    elif event.key == pg.K_9:
+                        ui_prompt_value = f"{ui_prompt_value}9"
+                    elif event.key == pg.K_BACKSPACE and len(ui_prompt_value) > 0:
+                        ui_prompt_value = ui_prompt_value[:len(ui_prompt_value)-1]
+                    elif event.key == pg.K_RETURN and len(ui_prompt_value) > 0:
+                        ui_prompt_running = False
+                        bf_interpreter.readByte(int(ui_prompt_value))
 
-                if bf_interpreter.halted():
-                    logging.debug("Disabling auto-run on halted program")
-                    step_run = False
+                    ui_input_prompt_text = ui_font.render(f"Set Value: {ui_prompt_value}", True, CLR_WHITE, CLR_BLACK)
+                    ui_input_prompt_rect = ui_input_prompt_text.get_rect()
+                    
+            else:
+                # Pressing SPACE will toggle the program run mode
+                if event.type == pg.KEYUP and event.key == pg.K_SPACE:
+                    step_run = not step_run
+                    step_next_time = time.time() + step_delay
 
-                logging.debug(f"Setting program auto exec to {step_run}")
+                    if bf_interpreter.halted():
+                        logging.debug("Disabling auto-run on halted program")
+                        step_run = False
 
-            # Pressing TAB will increase the execution rate by powers of 2
-            if event.type == pg.KEYUP and event.key == pg.K_TAB:
+                    logging.debug(f"Setting program auto exec to {step_run}")
 
-                incrementStepHz()
+                # Pressing TAB will increase the execution rate by powers of 2
+                if event.type == pg.KEYUP and event.key == pg.K_TAB:
 
-                step_delay = 1.0/STEP_HERTZ
-                step_next_time = time.time() + step_delay
+                    incrementStepHz()
+
+                    step_delay = 1.0/STEP_HERTZ
+                    step_next_time = time.time() + step_delay
 
         # Execute Instructions
-        if step_run and not bf_interpreter.halted() and time.time() >= step_next_time:
+        if step_run and bf_interpreter.canStep() and time.time() >= step_next_time:
             try:
                 bf_interpreter.step()
                 step_next_time = step_next_time + step_delay
 
             except BFRuntimeError as runtime_error:
                 logging.warning(f"Program execution failed due to runtime error:\r\n\t{runtime_error}")
+
+        # # Pause execution until a byte is read
+        # if bf_interpreter.waitingForInput():
+        #     bf_interpreter.readByte(int(input("Byte Read: ")))
+
+        #     step_next_time = time.time() + step_delay
 
         # Update Screen Elements
         # Memory Pointer
@@ -329,6 +371,13 @@ def main(winstyle=0):
             ui_state_rect = ui_state_text.get_rect()
             last_state = bf_interpreter.state
 
+            # Special handling of input request
+            if bf_interpreter.state == ProgramState.WaitingForInput:
+                ui_prompt_running = True
+                ui_prompt_value = ""
+                ui_input_prompt_text = ui_font.render(f"Set Value: {ui_prompt_value}", True, CLR_WHITE, CLR_BLACK)
+                ui_input_prompt_rect = ui_input_prompt_text.get_rect()
+
         ui_state_rect.topleft = (ui_hertz_rect.left, ui_hertz_rect.bottom)
 
         # Regenerate the step count if it has changed
@@ -346,6 +395,10 @@ def main(winstyle=0):
         screen.blit(ui_hertz_text, ui_hertz_rect)
         screen.blit(ui_state_text, ui_state_rect)
         screen.blit(ui_step_count_text, ui_step_count_rect)
+
+        if ui_prompt_running:
+            ui_input_prompt_rect.topleft = (300, 200)
+            screen.blit(ui_input_prompt_text, ui_input_prompt_rect)
 
         # Render PC
         ptr_color = CLR_WHITE

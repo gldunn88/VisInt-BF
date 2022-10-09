@@ -199,31 +199,29 @@ class TestBFRuntime:
 
     def test_setMemory_defaults_only(self):
         interpreter = BFInterpreter(8, 16)
-        interpreter.setMemory(values=[],default=0)
-        
+        interpreter.setMemory(values=[], default=0)
+
         assert len(interpreter.memory) == 8
         for cell in interpreter.memory:
             assert cell == 0
 
-
     def test_setMemory_initialized_and_default(self):
         interpreter = BFInterpreter(8, 16)
-        interpreter.setMemory(values=[1,2,3,4],default=8)
-        
+        interpreter.setMemory(values=[1, 2, 3, 4], default=8)
+
         assert len(interpreter.memory) == 8
         assert interpreter.memory[0] == 1
         assert interpreter.memory[1] == 2
         assert interpreter.memory[2] == 3
         assert interpreter.memory[3] == 4
-        
+
         for i in range(4, len(interpreter.memory)):
             assert interpreter.memory[i] == 8
 
-
     def test_setMemory_fully_initialized(self):
         interpreter = BFInterpreter(8, 16)
-        interpreter.setMemory(values=[1,2,3,4,5,6,7,8],default=0)
-        
+        interpreter.setMemory(values=[1, 2, 3, 4, 5, 6, 7, 8], default=0)
+
         assert len(interpreter.memory) == 8
         assert interpreter.memory[0] == 1
         assert interpreter.memory[1] == 2
@@ -234,31 +232,167 @@ class TestBFRuntime:
         assert interpreter.memory[6] == 7
         assert interpreter.memory[7] == 8
 
-
     def test_setMemory_negative_default_error(self):
         interpreter = BFInterpreter(8, 16)
         with pytest.raises(BFInitError):
-            interpreter.setMemory(values=[],default=-1)
+            interpreter.setMemory(values=[], default=-1)
 
     def test_setMemory_large_default_error(self):
         interpreter = BFInterpreter(8, 16)
         with pytest.raises(BFInitError):
-            interpreter.setMemory(values=[],default=17)
-
+            interpreter.setMemory(values=[], default=17)
 
     def test_setMemory_long_values_error(self):
         interpreter = BFInterpreter(8, 16)
         with pytest.raises(BFInitError):
-            interpreter.setMemory(values=[1,2,3,4,5,6,7,8,9],default=0)
-
+            interpreter.setMemory(values=[1, 2, 3, 4, 5, 6, 7, 8, 9], default=0)
 
     def test_setMemory_negative_values_error(self):
         interpreter = BFInterpreter(8, 16)
         with pytest.raises(BFInitError):
-            interpreter.setMemory(values=[1,-1],default=0)
+            interpreter.setMemory(values=[1, -1], default=0)
 
     def test_setMemory_large_values_error(self):
         interpreter = BFInterpreter(8, 16)
         with pytest.raises(BFInitError):
-            interpreter.setMemory(values=[1,17],default=0)
-        
+            interpreter.setMemory(values=[1, 17], default=0)
+
+    def test_readByte_success_readLastStep(self):
+        interpreter = BFInterpreter(8, 16)
+        interpreter.setMemory([], 0)
+        interpreter.setTape(",")
+
+        interpreter.step()
+        assert interpreter.state == ProgramState.WaitingForInput
+        assert interpreter.pc == 0
+        assert interpreter.memory[interpreter.ptr] == 0
+
+        interpreter.readByte(5)
+        interpreter.state == ProgramState.Halted
+        assert interpreter.pc == 1
+        assert interpreter.memory[interpreter.ptr] == 5
+
+    def test_readByte_success_stepAfterInput(self):
+        interpreter = BFInterpreter(8, 16)
+        interpreter.setMemory([], 0)
+        interpreter.setTape(",")
+
+        interpreter.step()
+        assert interpreter.state == ProgramState.WaitingForInput
+        assert interpreter.pc == 0
+        assert interpreter.memory[interpreter.ptr] == 0
+
+        interpreter.readByte(5)
+        interpreter.state == ProgramState.Running
+        assert interpreter.pc == 1
+        assert interpreter.memory[interpreter.ptr] == 5
+
+    def test_readByte_error_readyStatus(self):
+        interpreter = BFInterpreter(8, 16)
+        interpreter.setMemory([], 0)
+        interpreter.setTape("++")
+
+        assert interpreter.state == ProgramState.Ready
+        with pytest.raises(BFRuntimeError):
+            interpreter.readByte(0)
+
+    def test_readByte_error_runningStatus(self):
+        interpreter = BFInterpreter(8, 16)
+        interpreter.setMemory([], 0)
+        interpreter.setTape("++")
+
+        interpreter.step()
+        assert interpreter.state == ProgramState.Running
+        with pytest.raises(BFRuntimeError):
+            interpreter.readByte(0)
+
+    def test_readByte_error_haltedStatus(self):
+        interpreter = BFInterpreter(8, 16)
+        interpreter.setMemory([], 0)
+        interpreter.setTape("+")
+
+        interpreter.step()
+        assert interpreter.state == ProgramState.Halted
+        with pytest.raises(BFRuntimeError):
+            interpreter.readByte(0)
+
+    def test_halted(self):
+        interpreter = BFInterpreter(8, 16)
+        interpreter.setMemory([], 0)
+        interpreter.setTape(",+")
+
+        assert interpreter.state == ProgramState.Ready
+        assert not interpreter.halted()
+
+        interpreter.step()
+
+        assert interpreter.state == ProgramState.WaitingForInput
+        assert not interpreter.halted()
+
+        interpreter.readByte(5)
+        assert interpreter.state == ProgramState.Running
+        assert not interpreter.halted()
+
+        interpreter.step()
+        assert interpreter.state == ProgramState.Halted
+        assert interpreter.halted()
+
+        with pytest.raises(BFRuntimeError):
+            interpreter.step()
+
+        assert interpreter.state == ProgramState.Error
+        assert interpreter.halted()
+
+    def test_waitingForInput(self):
+        interpreter = BFInterpreter(8, 16)
+        interpreter.setMemory([], 0)
+        interpreter.setTape(",+")
+
+        assert interpreter.state == ProgramState.Ready
+        assert not interpreter.waitingForInput()
+
+        interpreter.step()
+
+        assert interpreter.state == ProgramState.WaitingForInput
+        assert interpreter.waitingForInput()
+
+        interpreter.readByte(5)
+        assert interpreter.state == ProgramState.Running
+        assert not interpreter.waitingForInput()
+
+        interpreter.step()
+        assert interpreter.state == ProgramState.Halted
+        assert not interpreter.waitingForInput()
+
+        with pytest.raises(BFRuntimeError):
+            interpreter.step()
+
+        assert interpreter.state == ProgramState.Error
+        assert not interpreter.waitingForInput()
+
+    def test_canStep(self):
+        interpreter = BFInterpreter(8, 16)
+        interpreter.setMemory([], 0)
+        interpreter.setTape(",+")
+
+        assert interpreter.state == ProgramState.Ready
+        assert interpreter.canStep()
+
+        interpreter.step()
+
+        assert interpreter.state == ProgramState.WaitingForInput
+        assert not interpreter.canStep()
+
+        interpreter.readByte(5)
+        assert interpreter.state == ProgramState.Running
+        assert interpreter.canStep()
+
+        interpreter.step()
+        assert interpreter.state == ProgramState.Halted
+        assert not interpreter.canStep()
+
+        with pytest.raises(BFRuntimeError):
+            interpreter.step()
+
+        assert interpreter.state == ProgramState.Error
+        assert not interpreter.canStep()
