@@ -153,7 +153,7 @@ class BFInterpreter():
         # Kick off program execution
         if self.state == ProgramState.Ready:
             self.state = ProgramState.Running
-        
+
         logging.debug(self.tapeString())
         logging.debug(self.memoryString())
 
