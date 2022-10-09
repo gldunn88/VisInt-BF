@@ -62,15 +62,15 @@ def BFCommandToString(cmd):
 
 class ProgramState(Enum):
     Ready = 0,
-    Running = 1,
+    Running = 1
     WaitingForInput = 2
-    Halted = 3,
+    Halted = 3
     Error = 4
 
 
 class BFInterpreter():
 
-    def __init__(self, memory_size: int, max_value: int = 2147483647):
+    def __init__(self, memory_size: int, max_value: int = 256):
 
         if memory_size < 1:
             self.raiseInitError("Memory must be at least 1 cell")
