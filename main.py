@@ -7,6 +7,7 @@ import time
 import json
 from src.bf import BFInterpreter, BFRuntimeError, ProgramState
 from src.hud_render import HudRenderer
+from src.io_prompt import IOPrompt
 import src.rendering_contants as rc
 from src.gamestate import Gamestate
 
@@ -241,16 +242,15 @@ def main(winstyle=0):
     step_run = False
 
     # Set up input handling
-    readByte_prompt_running = False
-    readByte_prompt_value = ""
-
-    # Init the UI elements
-    ui_font = pg.font.Font('freesansbold.ttf', 32)
+    readbyte_prompt_running = False
 
     # Set up Cursor Tracking
     PTRRECT.left = CELL_INITIAL_X + bf_interpreter.ptr*(CELL_OFFSET + CELL_WIDTH)
     setCameraOffset(PTRRECT.left - SCREENRECT.width/2, hard_set=True)
     setCameraSpeed(100)
+
+    # Set up contextual UI elements
+    readbyte_prompt = IOPrompt("Cell Value:")
 
     last_tick = time.time()
 
@@ -268,37 +268,17 @@ def main(winstyle=0):
                 return
             if event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE:
                 return
-
-            if readByte_prompt_running:
+            if readbyte_prompt_running:
                 if event.type == pg.KEYUP:
-                    if event.key == pg.K_0:
-                        readByte_prompt_value = f"{readByte_prompt_value}0"
-                    elif event.key == pg.K_1:
-                        readByte_prompt_value = f"{readByte_prompt_value}1"
-                    elif event.key == pg.K_2:
-                        readByte_prompt_value = f"{readByte_prompt_value}2"
-                    elif event.key == pg.K_3:
-                        readByte_prompt_value = f"{readByte_prompt_value}3"
-                    elif event.key == pg.K_4:
-                        readByte_prompt_value = f"{readByte_prompt_value}4"
-                    elif event.key == pg.K_5:
-                        readByte_prompt_value = f"{readByte_prompt_value}5"
-                    elif event.key == pg.K_6:
-                        readByte_prompt_value = f"{readByte_prompt_value}6"
-                    elif event.key == pg.K_7:
-                        readByte_prompt_value = f"{readByte_prompt_value}7"
-                    elif event.key == pg.K_8:
-                        readByte_prompt_value = f"{readByte_prompt_value}8"
-                    elif event.key == pg.K_9:
-                        readByte_prompt_value = f"{readByte_prompt_value}9"
-                    elif event.key == pg.K_BACKSPACE and len(readByte_prompt_value) > 0:
-                        readByte_prompt_value = readByte_prompt_value[:len(readByte_prompt_value)-1]
-                    elif event.key == pg.K_RETURN and len(readByte_prompt_value) > 0:
-                        readByte_prompt_running = False
-                        bf_interpreter.readByte(int(readByte_prompt_value))
 
-                    readByte_prompt_text = ui_font.render(f"Set Value: {readByte_prompt_value}", True, rc.CLR_WHITE, rc.CLR_BLACK) # noqa
-                    readByte_prompt_rect = readByte_prompt_text.get_rect()
+                    if (event.unicode in "0123456789"):
+                        readbyte_prompt.appendResponse(event.unicode)
+                    elif event.key == pg.K_BACKSPACE:
+                        readbyte_prompt.backspaceResponse()
+                    elif event.key == pg.K_RETURN and len(readbyte_prompt.response) > 0:
+                        readbyte_prompt_running = False
+                        bf_interpreter.readByte(int(readbyte_prompt.response))
+                        step_next_time = time.time() + step_delay
 
             else:
                 # Pressing SPACE will toggle the program run mode
@@ -339,11 +319,9 @@ def main(winstyle=0):
 
         # UI Elements
 
-        if bf_interpreter.state == ProgramState.WaitingForInput and not readByte_prompt_running:
-            readByte_prompt_running = True
-            readByte_prompt_value = ""
-            readByte_prompt_text = ui_font.render(f"Set Value: {readByte_prompt_value}", True, rc.CLR_WHITE, rc.CLR_BLACK) # noqa
-            readByte_prompt_rect = readByte_prompt_text.get_rect()
+        if bf_interpreter.state == ProgramState.WaitingForInput and not readbyte_prompt_running:
+            readbyte_prompt.setResponse("")
+            readbyte_prompt_running = True
 
         # Render Screen
         screen.fill(rc.CLR_BLACK)
@@ -351,9 +329,8 @@ def main(winstyle=0):
         # Render UI Elements
         hud_renderer.renderHud(screen, pg.Rect(50, 50, 0, 0), gs.step_hertz)
 
-        if readByte_prompt_running:
-            readByte_prompt_rect.topleft = (300, 200)
-            screen.blit(readByte_prompt_text, readByte_prompt_rect)
+        if readbyte_prompt_running:
+            readbyte_prompt.renderPrompt(screen, pg.Rect(100, 200, 400, 50))
 
         # Render PC
         ptr_color = rc.CLR_WHITE
