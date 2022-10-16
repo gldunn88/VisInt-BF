@@ -7,6 +7,7 @@ import time
 import json
 from src.bf import BFInterpreter, BFRuntimeError, ProgramState
 from src.hud_render import HudRenderer
+from src.interpreter_render import BFRenderer
 from src.io_prompt import IOPrompt
 import src.rendering_contants as rc
 from src.gamestate import Gamestate
@@ -220,7 +221,7 @@ def updateCameraPosition(tick_time: float):
 def main(winstyle=0):
 
     processCLI()
-    
+
     # Init the engine and display window
     initPyGame()
     screen = initWindow(800, 600)
@@ -230,8 +231,14 @@ def main(winstyle=0):
     bf_interpreter.setMemory(INT_INITIAL_VALUES, INT_CELL_DEFAULT_VALUE)
     bf_interpreter.setTape(INT_SRC)
 
-    hud_renderer = HudRenderer(interpreter=bf_interpreter)
+    # Init Graphics Handlers
+    bf_renderer = BFRenderer(interpreter=bf_interpreter,
+                             cell_width=50,
+                             cell_buffer=25,
+                             camera_speed=100,
+                             cell_max_height=300)
 
+    hud_renderer = HudRenderer(interpreter=bf_interpreter)
     gs = Gamestate(step_hertz=1)
 
     clock = pg.time.Clock()
@@ -253,14 +260,14 @@ def main(winstyle=0):
     readbyte_prompt = IOPrompt("Cell Value:")
 
     last_tick = time.time()
-
+    
     while True:
         # Hold Framerate to 60 fps
         clock.tick(60)
 
         # Store the seconds elapsed since the last tick
         tick_time = time.time() - last_tick
-        last_tick = tick_time
+        last_tick = time.time()
 
         # Handle Input
         for event in pg.event.get():
@@ -332,52 +339,9 @@ def main(winstyle=0):
         if readbyte_prompt_running:
             readbyte_prompt.renderPrompt(screen, pg.Rect(100, 200, 400, 50))
 
-        # Render PC
-        ptr_color = rc.CLR_WHITE
+        bf_renderer.render(screen, pg.Rect(50, 200, 0, 0), tick_time)
 
-        # The program execution has completed
-        if bf_interpreter.halted():
-            ptr_color = rc.CLR_RED
-
-        # The program is auto executing
-        elif step_run:
-            ptr_color = rc.CLR_GREEN
-
-        # The program is paused
-        else:
-            ptr_color = rc.CLR_BLUE
-        
-        PTRRECT.left -= CAMERA_OFFSET
-
-        pg.draw.polygon(
-            surface=screen,
-            color=ptr_color,
-            points=[
-                PTRRECT.bottomleft,
-                (PTRRECT.centerx, PTRRECT.top),
-                PTRRECT.bottomright])
-
-        # Render Memory
-        for i in range(0, len(bf_interpreter.memory)):
-            height = bf_interpreter.memory[i] * CELL_UNIT_HEIGHT
-
-            # Draw cell reference base
-            cell_base_rect = pg.Rect(CELL_INITIAL_X + i*(CELL_OFFSET + CELL_WIDTH) - CAMERA_OFFSET,
-                                     CELL_INITIAL_Y,
-                                     CELL_WIDTH,
-                                     10)
-
-            pg.draw.rect(screen, rect=cell_base_rect, color=(255, 0, 0))
-
-            # Draw memory
-            cell_rect = pg.Rect(CELL_INITIAL_X + i*(CELL_OFFSET + CELL_WIDTH) - CAMERA_OFFSET,
-                                CELL_INITIAL_Y - height,
-                                CELL_WIDTH,
-                                height)
-
-            pg.draw.rect(screen, rect=cell_rect, color=(255, 255, 255))
-
-        # Flip the display
+        # Flip the display      
         pg.display.flip()
 
 
