@@ -29,20 +29,6 @@ if not pg.image.get_extended():
 # Rendering Display
 SCREENRECT = pg.Rect(0, 0, 640, 480)
 
-# Cell Rendering Constants
-CELL_INITIAL_X = 50
-CELL_INITIAL_Y = 520
-CELL_OFFSET = 25
-CELL_WIDTH = 50
-
-CELL_UNIT_HEIGHT = 25
-
-# Pointer Rendering
-PTRRECT = pg.Rect(0, CELL_INITIAL_Y+10, CELL_WIDTH, CELL_WIDTH)
-CAMERA_OFFSET = 0
-CAMERA_OFFSET_TARGET = 0
-CAMERA_X_SPEED = 100
-
 # UI Control Values
 UI_INIT_TOPLEFT = (20, 20)
 
@@ -190,34 +176,6 @@ def processCLI():
             raise CliInitError(message)
 
 
-def setCameraSpeed(pixels_per_second: int):
-    global CAMERA_X_SPEED
-    CAMERA_X_SPEED = pixels_per_second
-
-
-def setCameraOffset(x: int, hard_set: bool = False):
-    global CAMERA_OFFSET, CAMERA_OFFSET_TARGET
-
-    CAMERA_OFFSET_TARGET = x
-
-    if hard_set:
-        CAMERA_OFFSET = CAMERA_OFFSET_TARGET
-
-
-def updateCameraPosition(tick_time: float):
-    global CAMERA_OFFSET
-
-    camera_shift = tick_time*CAMERA_X_SPEED
-
-    if abs(CAMERA_OFFSET - CAMERA_OFFSET_TARGET) < camera_shift:
-        CAMERA_OFFSET = CAMERA_OFFSET_TARGET
-    else:
-        if CAMERA_OFFSET > CAMERA_OFFSET_TARGET:
-            CAMERA_OFFSET -= camera_shift
-        else:
-            CAMERA_OFFSET += camera_shift
-
-
 def main(winstyle=0):
 
     processCLI()
@@ -251,11 +209,6 @@ def main(winstyle=0):
     # Set up input handling
     readbyte_prompt_running = False
 
-    # Set up Cursor Tracking
-    PTRRECT.left = CELL_INITIAL_X + bf_interpreter.ptr*(CELL_OFFSET + CELL_WIDTH)
-    setCameraOffset(PTRRECT.left - SCREENRECT.width/2, hard_set=True)
-    setCameraSpeed(100)
-
     # Set up contextual UI elements
     readbyte_prompt = IOPrompt("Cell Value:")
 
@@ -264,10 +217,11 @@ def main(winstyle=0):
     while True:
         # Hold Framerate to 60 fps
         clock.tick(60)
-
+        sys_time= time.time()
+        
         # Store the seconds elapsed since the last tick
-        tick_time = time.time() - last_tick
-        last_tick = time.time()
+        tick_time = sys_time - last_tick
+        last_tick = sys_time
 
         # Handle Input
         for event in pg.event.get():
@@ -314,15 +268,6 @@ def main(winstyle=0):
 
             except BFRuntimeError as runtime_error:
                 logging.warning(f"Program execution failed due to runtime error:\r\n\t{runtime_error}")
-
-        # Update Screen Elements
-
-        # Memory Pointer
-        PTRRECT.left = CELL_INITIAL_X + bf_interpreter.ptr*(CELL_OFFSET + CELL_WIDTH)
-
-        # Camera Position
-        setCameraOffset(PTRRECT.left - SCREENRECT.width/2)
-        updateCameraPosition(tick_time)
 
         # UI Elements
 
