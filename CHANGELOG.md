@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.0] - 2022-09-28
+## [0.0.1] - 2022-09-28
 ### Added
 - Hardcoded rendering configuration
     - Screen scrolls fluidly to keep program counter in center
@@ -19,3 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pause to temporarily halt execution
 - Initial README file
 
+## [0.0.2] - 2022-10-22
+### Added
+- Input prompt support for ',' command
+
+### Changed
+
+- Refactored rendering to classes outside of main. Now main is responsible for event handling and state controls only.
