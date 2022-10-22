@@ -1,3 +1,4 @@
+
 import pygame as pg
 import os
 import sys
@@ -5,6 +6,11 @@ import logging
 import time
 import json
 from src.bf import BFInterpreter, BFRuntimeError, ProgramState
+from src.hud_render import HudRenderer
+from src.interpreter_render import BFRenderer
+from src.io_prompt import IOPrompt
+import src.rendering_contants as rc
+from src.gamestate import Gamestate
 
 
 class CliInitError(Exception):
@@ -22,28 +28,6 @@ if not pg.image.get_extended():
 # Constants
 # Rendering Display
 SCREENRECT = pg.Rect(0, 0, 640, 480)
-
-# Cell Rendering Constants
-CELL_INITIAL_X = 50
-CELL_INITIAL_Y = 520
-CELL_OFFSET = 25
-CELL_WIDTH = 50
-
-CELL_UNIT_HEIGHT = 25
-
-# Pointer Rendering
-PTRRECT = pg.Rect(0, CELL_INITIAL_Y+10, CELL_WIDTH, CELL_WIDTH)
-
-# Some handy color references
-CLR_WHITE = (255, 255, 255)
-CLR_RED = (255, 0, 0)
-CLR_GREEN = (0, 255, 0)
-CLR_BLUE = (0, 0, 255)
-CLR_BLACK = (0, 0, 0)
-
-# Execution Control
-STEP_HERTZ = 1
-STEP_MAX_HERTZ = 32
 
 # UI Control Values
 UI_INIT_TOPLEFT = (20, 20)
@@ -93,25 +77,6 @@ def initLogging(verbose: bool):
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.INFO)
-
-
-def setStepHz(step_hz: int, loop_on_overflow: bool = False):
-    global STEP_HERTZ, STEP_MAX_HERTZ
-
-    if step_hz < 1:
-        step_hz = 1
-    elif step_hz > STEP_MAX_HERTZ:
-        if loop_on_overflow:
-            step_hz = 1
-        else:
-            step_hz = STEP_MAX_HERTZ
-
-    STEP_HERTZ = step_hz
-    logging.info(f"Setting execution speed to {STEP_HERTZ}Hz.")
-
-
-def incrementStepHz():
-    setStepHz(step_hz=STEP_HERTZ * 2, loop_on_overflow=True)
 
 
 def openSrcFile(path: str):
@@ -215,56 +180,48 @@ def main(winstyle=0):
 
     processCLI()
 
+    # Init the engine and display window
+    initPyGame()
+    screen = initWindow(800, 600)
+
     # Init a BF program
     bf_interpreter = BFInterpreter(INT_CELL_COUNT, INT_CELL_MAX_VALUE)
     bf_interpreter.setMemory(INT_INITIAL_VALUES, INT_CELL_DEFAULT_VALUE)
     bf_interpreter.setTape(INT_SRC)
 
-    # Init the engine and display window
-    initPyGame()
-    screen = initWindow(800, 600)
+    # Init Graphics Handlers
+    bf_renderer = BFRenderer(interpreter=bf_interpreter,
+                             cell_width=50,
+                             cell_buffer=25,
+                             camera_speed=100,
+                             cell_max_height=300)
+
+    hud_renderer = HudRenderer(interpreter=bf_interpreter)
+    gs = Gamestate(step_hertz=1)
 
     clock = pg.time.Clock()
 
-    # Set up auto-execute values
-    # We always start with 1 op per second
-    setStepHz(1)
-
     # Set up the step execution values
-    step_delay = 1.0/STEP_HERTZ
+    step_delay = 1.0/gs.step_hertz
     step_next_time = time.time() + step_delay
     step_run = False
 
-    # Set up state tracking
-    last_state = bf_interpreter.state
-    last_step_hz = STEP_HERTZ
-    last_step_count = 0
-
     # Set up input handling
-    ui_prompt_running = False
-    ui_prompt_value = ""
+    readbyte_prompt_running = False
 
-    # Init the UI elements
-    ui_font = pg.font.Font('freesansbold.ttf', 32)
+    # Set up contextual UI elements
+    readbyte_prompt = IOPrompt("Cell Value:")
 
-    ui_hertz_text = ui_font.render(f"CPU: {STEP_HERTZ}Hz", True, CLR_WHITE, CLR_BLACK)
-    ui_hertz_rect = ui_hertz_text.get_rect()
-
-    ui_state_text = ui_font.render(f"State: {bf_interpreter.state._name_}", True, CLR_WHITE, CLR_BLACK)
-    ui_state_rect = ui_state_text.get_rect()
-
-    ui_step_count_text = ui_font.render(f"Step Count: {bf_interpreter.step_count}", True, CLR_WHITE, CLR_BLACK)
-    ui_step_count_rect = ui_step_count_text.get_rect()
-
-    # Set up Cursor Tracking
-    render_offset = 0 - SCREENRECT.width/2
-    render_offset_target = render_offset
-    render_offset_speed_per_second = 100  # pixels per second
-    render_offset_speed_per_tick = render_offset_speed_per_second*(60/1000)  # pixels per frame
-
+    last_tick = time.time()
+    
     while True:
         # Hold Framerate to 60 fps
         clock.tick(60)
+        sys_time= time.time()
+        
+        # Store the seconds elapsed since the last tick
+        tick_time = sys_time - last_tick
+        last_tick = sys_time
 
         # Handle Input
         for event in pg.event.get():
@@ -272,38 +229,18 @@ def main(winstyle=0):
                 return
             if event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE:
                 return
-
-            if ui_prompt_running:
+            if readbyte_prompt_running:
                 if event.type == pg.KEYUP:
-                    if event.key == pg.K_0:
-                        ui_prompt_value = f"{ui_prompt_value}0"
-                    elif event.key == pg.K_1:
-                        ui_prompt_value = f"{ui_prompt_value}1"
-                    elif event.key == pg.K_2:
-                        ui_prompt_value = f"{ui_prompt_value}2"
-                    elif event.key == pg.K_3:
-                        ui_prompt_value = f"{ui_prompt_value}3"
-                    elif event.key == pg.K_4:
-                        ui_prompt_value = f"{ui_prompt_value}4"
-                    elif event.key == pg.K_5:
-                        ui_prompt_value = f"{ui_prompt_value}5"
-                    elif event.key == pg.K_6:
-                        ui_prompt_value = f"{ui_prompt_value}6"
-                    elif event.key == pg.K_7:
-                        ui_prompt_value = f"{ui_prompt_value}7"
-                    elif event.key == pg.K_8:
-                        ui_prompt_value = f"{ui_prompt_value}8"
-                    elif event.key == pg.K_9:
-                        ui_prompt_value = f"{ui_prompt_value}9"
-                    elif event.key == pg.K_BACKSPACE and len(ui_prompt_value) > 0:
-                        ui_prompt_value = ui_prompt_value[:len(ui_prompt_value)-1]
-                    elif event.key == pg.K_RETURN and len(ui_prompt_value) > 0:
-                        ui_prompt_running = False
-                        bf_interpreter.readByte(int(ui_prompt_value))
 
-                    ui_input_prompt_text = ui_font.render(f"Set Value: {ui_prompt_value}", True, CLR_WHITE, CLR_BLACK)
-                    ui_input_prompt_rect = ui_input_prompt_text.get_rect()
-                    
+                    if (event.unicode in "0123456789"):
+                        readbyte_prompt.appendResponse(event.unicode)
+                    elif event.key == pg.K_BACKSPACE:
+                        readbyte_prompt.backspaceResponse()
+                    elif event.key == pg.K_RETURN and len(readbyte_prompt.response) > 0:
+                        readbyte_prompt_running = False
+                        bf_interpreter.readByte(int(readbyte_prompt.response))
+                        step_next_time = time.time() + step_delay
+
             else:
                 # Pressing SPACE will toggle the program run mode
                 if event.type == pg.KEYUP and event.key == pg.K_SPACE:
@@ -318,10 +255,9 @@ def main(winstyle=0):
 
                 # Pressing TAB will increase the execution rate by powers of 2
                 if event.type == pg.KEYUP and event.key == pg.K_TAB:
+                    gs.multiplyStepHertz(factor=2, loop=True)
 
-                    incrementStepHz()
-
-                    step_delay = 1.0/STEP_HERTZ
+                    step_delay = 1.0/gs.step_hertz
                     step_next_time = time.time() + step_delay
 
         # Execute Instructions
@@ -333,119 +269,24 @@ def main(winstyle=0):
             except BFRuntimeError as runtime_error:
                 logging.warning(f"Program execution failed due to runtime error:\r\n\t{runtime_error}")
 
-        # # Pause execution until a byte is read
-        # if bf_interpreter.waitingForInput():
-        #     bf_interpreter.readByte(int(input("Byte Read: ")))
-
-        #     step_next_time = time.time() + step_delay
-
-        # Update Screen Elements
-        # Memory Pointer
-        PTRRECT.left = CELL_INITIAL_X + bf_interpreter.ptr*(CELL_OFFSET + CELL_WIDTH)
-
-        # Updating rendering offset
-        render_offset_target = PTRRECT.left - SCREENRECT.width/2
-        if render_offset_target < render_offset:
-            render_offset -= render_offset_speed_per_tick
-            if render_offset_target > render_offset:
-                render_offset = render_offset_target
-
-        elif render_offset_target > render_offset:
-            render_offset += render_offset_speed_per_tick
-            if render_offset_target < render_offset:
-                render_offset = render_offset_target
-
         # UI Elements
 
-        # Regenerate the UI Hertz display if it has changed
-        if last_step_hz != STEP_HERTZ:
-            ui_hertz_text = ui_font.render(f"CPU: {STEP_HERTZ}Hz", True, CLR_WHITE, CLR_BLACK)
-            ui_hertz_rect = ui_hertz_text.get_rect()
-            last_step_hz = STEP_HERTZ
-
-        ui_hertz_rect.topleft = UI_INIT_TOPLEFT
-
-        # Regenerate the state if it has changed
-        if bf_interpreter.state != last_state:
-            ui_state_text = ui_font.render(f"{bf_interpreter.state._name_}", True, CLR_WHITE, CLR_BLACK)
-            ui_state_rect = ui_state_text.get_rect()
-            last_state = bf_interpreter.state
-
-            # Special handling of input request
-            if bf_interpreter.state == ProgramState.WaitingForInput:
-                ui_prompt_running = True
-                ui_prompt_value = ""
-                ui_input_prompt_text = ui_font.render(f"Set Value: {ui_prompt_value}", True, CLR_WHITE, CLR_BLACK)
-                ui_input_prompt_rect = ui_input_prompt_text.get_rect()
-
-        ui_state_rect.topleft = (ui_hertz_rect.left, ui_hertz_rect.bottom)
-
-        # Regenerate the step count if it has changed
-        if bf_interpreter.step_count != last_step_count:
-            ui_step_count_text = ui_font.render(f"Step Count: {bf_interpreter.step_count}", True, CLR_WHITE, CLR_BLACK)
-            ui_step_count_rect = ui_step_count_text.get_rect()
-            last_step_count = bf_interpreter.step_count
-
-        ui_step_count_rect.topleft = (ui_hertz_rect.left, ui_state_rect.bottom)
+        if bf_interpreter.state == ProgramState.WaitingForInput and not readbyte_prompt_running:
+            readbyte_prompt.setResponse("")
+            readbyte_prompt_running = True
 
         # Render Screen
-        screen.fill(CLR_BLACK)
+        screen.fill(rc.CLR_BLACK)
 
         # Render UI Elements
-        screen.blit(ui_hertz_text, ui_hertz_rect)
-        screen.blit(ui_state_text, ui_state_rect)
-        screen.blit(ui_step_count_text, ui_step_count_rect)
+        hud_renderer.renderHud(screen, pg.Rect(50, 50, 0, 0), gs.step_hertz)
 
-        if ui_prompt_running:
-            ui_input_prompt_rect.topleft = (300, 200)
-            screen.blit(ui_input_prompt_text, ui_input_prompt_rect)
+        if readbyte_prompt_running:
+            readbyte_prompt.renderPrompt(screen, pg.Rect(100, 200, 400, 50))
 
-        # Render PC
-        ptr_color = CLR_WHITE
+        bf_renderer.render(screen, pg.Rect(50, 200, 0, 0), tick_time)
 
-        # The program execution has completed
-        if bf_interpreter.halted():
-            ptr_color = CLR_RED
-
-        # The program is auto executing
-        elif step_run:
-            ptr_color = CLR_GREEN
-
-        # The program is paused
-        else:
-            ptr_color = CLR_BLUE
-
-        PTRRECT.left -= render_offset
-
-        pg.draw.polygon(
-            surface=screen,
-            color=ptr_color,
-            points=[
-                PTRRECT.bottomleft,
-                (PTRRECT.centerx, PTRRECT.top),
-                PTRRECT.bottomright])
-
-        # Render Memory
-        for i in range(0, len(bf_interpreter.memory)):
-            height = bf_interpreter.memory[i] * CELL_UNIT_HEIGHT
-
-            # Draw cell reference base
-            cell_base_rect = pg.Rect(CELL_INITIAL_X + i*(CELL_OFFSET + CELL_WIDTH) - render_offset,
-                                     CELL_INITIAL_Y,
-                                     CELL_WIDTH,
-                                     10)
-
-            pg.draw.rect(screen, rect=cell_base_rect, color=(255, 0, 0))
-
-            # Draw memory
-            cell_rect = pg.Rect(CELL_INITIAL_X + i*(CELL_OFFSET + CELL_WIDTH) - render_offset,
-                                CELL_INITIAL_Y - height,
-                                CELL_WIDTH,
-                                height)
-
-            pg.draw.rect(screen, rect=cell_rect, color=(255, 255, 255))
-
-        # Flip the display
+        # Flip the display      
         pg.display.flip()
 
 
